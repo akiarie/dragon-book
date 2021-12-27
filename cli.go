@@ -51,9 +51,10 @@ func tokenize(lex *lexer) stateFn {
 	stream := ""
 	for i, c := range lex.input[lex.pos:] {
 		errstream += fmt.Sprintf("%c", c)
-		if !unicode.IsSpace(c) {
-			stream += fmt.Sprintf("%c", c)
+		if unicode.IsSpace(c) {
+			continue
 		}
+		stream += fmt.Sprintf("%c", c)
 		if tk, ok := parsetoken(stream); ok {
 			lex.tokens = append(lex.tokens, tk)
 			lex.pos += i + 1
@@ -74,7 +75,7 @@ var grammar = map[string]nonterminal{
 		"other",
 	},
 	"optexpr": nonterminal{
-		"",
+		"ε",
 		"expr",
 	},
 }
@@ -99,7 +100,7 @@ func parsetree(tokens []token, startnt string) (*node, int, error) {
 	pos := 0
 	children := []node{}
 	for _, prod := range grammar[startnt] {
-		if prod == "" {
+		if prod == "ε" {
 			optional = true
 			continue
 		}
@@ -146,8 +147,11 @@ func parsetree(tokens []token, startnt string) (*node, int, error) {
 }
 
 func main() {
+	input := `
+if (expr) for (expr;;expr) other
+	`
 	lex := &lexer{
-		input:  "for (; expr; expr) other",
+		input:  strings.TrimSpace(input),
 		tokens: []token{},
 	}
 	for state := stateFn(tokenize); state != nil; state = state(lex) {
