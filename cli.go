@@ -12,10 +12,12 @@ import (
 type token string
 
 const (
+	tkEmpty token = "ε"
+
 	// punctuation
-	tkLbrac token = "("
-	tkRbrac       = ")"
-	tkColon       = ";"
+	tkLbrac = "("
+	tkRbrac = ")"
+	tkColon = ";"
 
 	// control
 	tkIf  = "if"
@@ -33,6 +35,13 @@ func parsetoken(s string) (token, bool) {
 		}
 	}
 	return token("Unknown"), false
+}
+
+func (tk token) parse(tokens []token) (*node, int, error) {
+	if tokens[0] == tk {
+		return &node{symbol: tk}, 1, nil
+	}
+	return nil, -1, fmt.Errorf("Unknown token %v", tokens[0])
 }
 
 type lexer struct {
@@ -64,6 +73,10 @@ func tokenize(lex *lexer) stateFn {
 	panic(fmt.Sprintf("Unknown sequence '%s'", errstream))
 }
 
+type symbol interface {
+	parse([]token) (*node, int, error)
+}
+
 type production string
 type nonterminal []production
 
@@ -80,8 +93,47 @@ var grammar = map[string]nonterminal{
 	},
 }
 
+func (nt nonterminal) parse(tokens []token) (*node, int, error) {
+	optional := false
+	pos := 0
+	children := []node{}
+	for _, prod := range nt {
+		if prod == "ε" {
+			optional = true
+			continue
+		}
+		var sym symbol
+		for _, field := range strings.Fields(string(prod)) {
+			if tk, ok := parsetoken(field); ok {
+				sym = tk
+			} else {
+				for subnt := range grammar {
+					if field == subnt {
+						sym = grammar[subnt]
+					}
+				}
+			}
+			if sym == nil { // should be impossible, but in case
+				panic(fmt.Sprintf("Unknown field: %s", field))
+			}
+			if child, shift, err := sym.parse(tokens[pos:]); err == nil {
+				children = append(children, *child)
+				pos += shift
+			} else {
+				goto nextprod
+			}
+		}
+		return &node{symbol: nt, children: children}, pos, nil
+	nextprod:
+	}
+	if optional {
+		return &node{symbol: tkEmpty}, 0, nil
+	}
+	return nil, -1, fmt.Errorf("Cannot identify symbol '%s' at %d in %v", tokens[pos], pos, tokens)
+}
+
 type node struct {
-	symbol   string
+	symbol   symbol
 	children []node
 }
 
@@ -93,70 +145,15 @@ func (n node) String() string {
 	return tree.String()
 }
 
-// parsetree parses token list into tree based on start, returning the number
-// of consumed tokens
-func parsetree(tokens []token, startnt string) (*node, int, error) {
-	optional := false
-	pos := 0
-	children := []node{}
-	for _, prod := range grammar[startnt] {
-		if prod == "ε" {
-			optional = true
-			continue
-		}
-		fields := strings.Fields(string(prod))
-		for _, field := range fields {
-			// if field terminal
-			if tk, ok := parsetoken(field); ok {
-				if field == string(tk) {
-					if tk == tokens[pos] {
-						children = append(children, node{symbol: field})
-						pos++
-						goto nextfield
-					}
-				}
-				// with terminals, we must have an exact match, so if we don't
-				// get one we know the production won't work
-				goto nextprod
-			} else { // otherwise, perhaps nonterminal?
-				for subnt := range grammar {
-					if field == subnt {
-						child, shift, err := parsetree(tokens[pos:], subnt)
-						if err == nil {
-							children = append(children, *child)
-							pos += shift
-							goto nextfield
-						}
-					}
-				}
-			}
-			// production doesn't match
-			goto nextprod
-		nextfield:
-		}
-		// if these match then some production parsed
-		if len(children) == len(fields) {
-			return &node{symbol: startnt, children: children}, pos, nil
-		}
-	nextprod:
-	}
-	if optional {
-		return &node{symbol: "ε"}, 0, nil
-	}
-	return nil, -1, fmt.Errorf("Cannot identify symbol '%s' at %d in %v with start %s", tokens[pos], pos, tokens, startnt)
-}
-
 func main() {
-	input := `
-if (expr) for (expr;;expr) other
-	`
+	input := `for ( ; expr ; expr ) other`
 	lex := &lexer{
 		input:  strings.TrimSpace(input),
 		tokens: []token{},
 	}
 	for state := stateFn(tokenize); state != nil; state = state(lex) {
 	}
-	tree, _, err := parsetree(lex.tokens, "stmt")
+	tree, _, err := grammar["stmt"].parse(lex.tokens)
 	if err != nil {
 		log.Fatalln(err)
 	}
