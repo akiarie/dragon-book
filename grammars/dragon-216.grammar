@@ -1,0 +1,7 @@
+stmt    → expr ;
+        | if ( expr ) stmt
+        | for ( optexpr ; optexpr ; optexpr ) stmt
+        | other
+
+optexpr → ε
+        | expr

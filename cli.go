@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"unicode"
 
@@ -29,7 +28,7 @@ const (
 )
 
 func parsetoken(s string) (token, bool) {
-	for _, tk := range []token{tkLbrac, tkRbrac, tkColon, tkIf, tkFor, tkExpr, tkOther} {
+	for _, tk := range []token{tkEmpty, tkLbrac, tkRbrac, tkColon, tkIf, tkFor, tkExpr, tkOther} {
 		if s == string(tk) {
 			return tk, true
 		}
@@ -37,7 +36,7 @@ func parsetoken(s string) (token, bool) {
 	return token("Unknown"), false
 }
 
-func (tk token) parse(tokens []token) (*node, int, error) {
+func (tk token) parse(tokens []token, G grammar) (*node, int, error) {
 	if tokens[0] == tk {
 		return &node{symbol: tk}, 1, nil
 	}
@@ -74,30 +73,20 @@ func tokenize(lex *lexer) stateFn {
 }
 
 type symbol interface {
-	parse([]token) (*node, int, error)
+	parse([]token, grammar) (*node, int, error)
 }
 
 type production string
-type nonterminal []production
-
-var grammar = map[string]nonterminal{
-	"stmt": nonterminal{
-		"expr ;",
-		"if ( expr ) stmt",
-		"for ( optexpr ; optexpr ; optexpr ) stmt",
-		"other",
-	},
-	"optexpr": nonterminal{
-		"ε",
-		"expr",
-	},
+type nonterminal struct {
+	name  string
+	prods []production
 }
 
-func (nt nonterminal) parse(tokens []token) (*node, int, error) {
+func (nt nonterminal) parse(tokens []token, G grammar) (*node, int, error) {
 	optional := false
 	pos := 0
 	children := []node{}
-	for _, prod := range nt {
+	for _, prod := range nt.prods {
 		if prod == "ε" {
 			optional = true
 			continue
@@ -107,16 +96,16 @@ func (nt nonterminal) parse(tokens []token) (*node, int, error) {
 			if tk, ok := parsetoken(field); ok {
 				sym = tk
 			} else {
-				for subnt := range grammar {
-					if field == subnt {
-						sym = grammar[subnt]
+				for _, subnt := range G {
+					if field == subnt.name {
+						sym = subnt
 					}
 				}
 			}
 			if sym == nil { // should be impossible, but in case
 				panic(fmt.Sprintf("Unknown field: %s", field))
 			}
-			if child, shift, err := sym.parse(tokens[pos:]); err == nil {
+			if child, shift, err := sym.parse(tokens[pos:], G); err == nil {
 				children = append(children, *child)
 				pos += shift
 			} else {
@@ -130,6 +119,34 @@ func (nt nonterminal) parse(tokens []token) (*node, int, error) {
 		return &node{symbol: tkEmpty}, 0, nil
 	}
 	return nil, -1, fmt.Errorf("Cannot identify symbol '%s' at %d in %v", tokens[pos], pos, tokens)
+}
+
+type grammar []nonterminal
+
+func (G grammar) parsetree(tokens []token) (*node, error) {
+	tree, _, err := G[0].parse(tokens, G)
+	if err != nil {
+		return nil, err
+	}
+	return tree, nil
+}
+
+func (G grammar) String() string {
+	padlen := 0
+	for _, nt := range G {
+		if padlen < len(nt.name) {
+			padlen = len(nt.name)
+		}
+	}
+	s := ""
+	for _, nt := range G {
+		s += fmt.Sprintf("%-*s → %v\n", padlen, nt.name, nt.prods[0])
+		for _, prod := range nt.prods[1:] {
+			s += fmt.Sprintf("%*s | %v\n", padlen, "", prod)
+		}
+		s += fmt.Sprintln()
+	}
+	return strings.TrimRightFunc(s, unicode.IsSpace)
 }
 
 type node struct {
@@ -146,6 +163,25 @@ func (n node) String() string {
 }
 
 func main() {
+	G := grammar{
+		nonterminal{
+			"stmt",
+			[]production{
+				"expr ;",
+				"if ( expr ) stmt",
+				"for ( optexpr ; optexpr ; optexpr ) stmt",
+				"other",
+			},
+		},
+		nonterminal{
+			"optexpr",
+			[]production{
+				"ε",
+				"expr",
+			},
+		},
+	}
+	fmt.Println(G)
 	input := `for ( ; expr ; expr ) other`
 	lex := &lexer{
 		input:  strings.TrimSpace(input),
@@ -153,9 +189,11 @@ func main() {
 	}
 	for state := stateFn(tokenize); state != nil; state = state(lex) {
 	}
-	tree, _, err := grammar["stmt"].parse(lex.tokens)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	fmt.Println(tree)
+	/*
+		tree, err := G.parsetree(lex.tokens)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		fmt.Println(tree)
+	*/
 }

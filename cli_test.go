@@ -6,8 +6,29 @@ import (
 )
 
 func TestCli(t *testing.T) {
-	for _, nt := range grammar {
-		for _, prod := range nt {
+	G := grammar{
+		nonterminal{
+			"stmt",
+			[]production{
+				"expr ;",
+				"if ( expr ) stmt",
+				"for ( optexpr ; optexpr ; optexpr ) stmt",
+				"other",
+			},
+		},
+		nonterminal{
+			"optexpr",
+			[]production{
+				"ε",
+				"expr",
+			},
+		},
+	}
+	for _, nt := range G {
+		if len(nt.prods) == 0 {
+			t.Errorf("Nonterminal %s with no productions", nt.name)
+		}
+		for _, prod := range nt.prods {
 			prodarr := strings.Fields(string(prod))
 			for _, s := range prodarr {
 				found := false
@@ -15,8 +36,8 @@ func TestCli(t *testing.T) {
 					found = true
 				} else {
 					// if not token, check for nonterminal
-					for subntname := range grammar {
-						if s == subntname {
+					for _, subnt := range G {
+						if s == subnt.name {
 							found = true
 						}
 					}
