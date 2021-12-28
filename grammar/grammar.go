@@ -12,13 +12,6 @@ type Token string
 
 const tkEmpty Token = "ε"
 
-func (tk Token) parse(tokens []Token, G Grammar) (*node, int, error) {
-	if tokens[0] == tk {
-		return &node{symbol: string(tk)}, 1, nil
-	}
-	return nil, -1, fmt.Errorf("Unknown Token %v", tokens[0])
-}
-
 type lexer struct {
 	G      Grammar
 	pos    int
@@ -49,10 +42,6 @@ func tokenize(lex *lexer) stateFn {
 	panic(fmt.Sprintf("Unknown sequence '%s'", errstream))
 }
 
-type symbol interface {
-	parse([]Token, Grammar) (*node, int, error)
-}
-
 // Nonterminal represents a nonterminal in a context-free grammar.
 type Nonterminal struct {
 	Head        string
@@ -75,21 +64,28 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 			optional = true
 			continue
 		}
-		var sym symbol
+		var parser func(int) (*node, int, error)
 		for _, field := range strings.Fields(prod) {
 			if tk, ok := G.parsetoken(field); ok {
-				sym = tk
+				parser = func(i int) (*node, int, error) {
+					if tokens[i] == tk {
+						return &node{symbol: string(tk)}, 1, nil
+					}
+					return nil, -1, fmt.Errorf("Unknown Token %v", tokens[0])
+				}
 			} else {
 				for _, subnt := range G {
 					if field == subnt.Head {
-						sym = subnt
+						parser = func(i int) (*node, int, error) {
+							return subnt.parse(tokens[i:], G)
+						}
 					}
 				}
 			}
-			if sym == nil { // should be impossible, but in case
+			if parser == nil { // should be impossible, but in case
 				panic(fmt.Sprintf("Unknown field: %s", field))
 			}
-			if child, shift, err := sym.parse(tokens[pos:], G); err == nil {
+			if child, shift, err := parser(pos); err == nil {
 				children = append(children, *child)
 				pos += shift
 			} else {
@@ -160,6 +156,8 @@ func (G Grammar) String() string {
 	return strings.TrimRightFunc(s, unicode.IsSpace)
 }
 
+// ParseAST parses the input string according to the Grammar, returning an
+// error if this is not possible.
 func (G Grammar) ParseAST(input string) (*node, error) {
 	lex := &lexer{G: G, input: input}
 	for state := stateFn(tokenize); state != nil; state = state(lex) {
