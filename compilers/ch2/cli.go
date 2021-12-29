@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	ex241()
+	fig215()
 }
 
 // Figure 2.16

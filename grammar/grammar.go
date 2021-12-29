@@ -67,6 +67,44 @@ type Nonterminal struct {
 	Productions []string
 }
 
+// AntiLeftRecurse eliminates left-recursion, if possible, by re-writing the
+// Nonterminal
+//     A → A α | A β | γ | δ
+// as the pair
+//     A → γ R | δ R
+//     R → α R | β R | ε
+func (nt Nonterminal) AntiLeftRecurse() ([]Nonterminal, error) {
+	var Rsym string = "R"
+	static := []string{}
+	tails := []string{}
+	for _, prod := range nt.Productions {
+		symbols := strings.Fields(prod)
+		if len(symbols) < 1 {
+			return nil, fmt.Errorf("Empty production %s → %s", nt.Head, prod)
+		}
+		if sym := strings.Fields(prod)[0]; sym == nt.Head {
+			if len(symbols) < 2 {
+				return nil, fmt.Errorf("Cannot anti recurse %s → %s, too few symbols", nt.Head, prod)
+			}
+			α := strings.Join(symbols[1:], " ")
+			tails = append(tails, fmt.Sprintf("%s %s", α, Rsym))
+		} else {
+			γ := strings.TrimSpace(prod)
+			static = append(static, fmt.Sprintf("%s %s", γ, Rsym))
+		}
+	}
+	if len(static) == len(nt.Productions) {
+		return []Nonterminal{nt}, nil
+	}
+	if len(tails) == len(nt.Productions) {
+		return nil, fmt.Errorf("Sinister Nonterminal %s left-recursion cannot be eliminated", nt)
+	}
+	return []Nonterminal{
+		Nonterminal{nt.Head, static},
+		Nonterminal{Rsym, append(tails, "ε")},
+	}, nil
+}
+
 func (nt Nonterminal) String() string {
 	if len(nt.Productions) == 0 {
 		panic("Cannot display empty Nonterminal")
@@ -79,8 +117,8 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 		children := []node{}
 		pos := 0
 		var parser func(int) (*node, int, error)
-		for _, field := range strings.Fields(prod) {
-			if tk, ok := G.parsetoken(field); ok {
+		for _, sym := range strings.Fields(prod) {
+			if tk, ok := G.parsetoken(sym); ok {
 				parser = func(i int) (*node, int, error) {
 					if i >= len(tokens) {
 						return nil, -1, fmt.Errorf("Empty token list %v", tokens)
@@ -92,7 +130,7 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 				}
 			} else {
 				for _, subnt := range G {
-					if field == subnt.Head {
+					if sym == subnt.Head {
 						parser = func(i int) (*node, int, error) {
 							return subnt.parse(tokens[i:], G)
 						}
@@ -100,7 +138,7 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 				}
 			}
 			if parser == nil { // should be impossible, but in case
-				panic(fmt.Sprintf("Unknown field: %s", field))
+				panic(fmt.Sprintf("Unknown symbol: %s", sym))
 			}
 			if child, shift, err := parser(pos); err == nil {
 				children = append(children, *child)
@@ -166,12 +204,12 @@ func (G Grammar) String() string {
 	}
 	prettyprod := func(prod string) string {
 		pieces := []string{}
-		for _, field := range strings.Fields(prod) {
-			if _, ok := ntmap[field]; ok {
-				pieces = append(pieces, chalk.Blue.NewStyle().Style(field))
+		for _, sym := range strings.Fields(prod) {
+			if _, ok := ntmap[sym]; ok {
+				pieces = append(pieces, chalk.Blue.NewStyle().Style(sym))
 
 			} else {
-				pieces = append(pieces, field)
+				pieces = append(pieces, sym)
 			}
 		}
 		return strings.Join(pieces, " ")
@@ -217,6 +255,21 @@ func (G Grammar) ParseAST(input []byte) (*node, error) {
 		return nil, fmt.Errorf("Unable to parse '%s' at %d", preimage(lex.tokens[n:]), n)
 	}
 	return tree, nil
+}
+
+// AntiLeftRecurse eliminates left-recursion in the Grammar by calling
+// (Nonterminal).AntiLeftRecurse() on every Nonterminal and replacing as
+// appropriate.
+func (G Grammar) AntiLeftRecurse() (Grammar, error) {
+	newG := Grammar{}
+	for _, nt := range G {
+		repnts, err := nt.AntiLeftRecurse()
+		if err != nil {
+			return nil, err
+		}
+		newG = append(newG, repnts...)
+	}
+	return newG, nil
 }
 
 type node struct {
