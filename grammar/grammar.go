@@ -61,10 +61,85 @@ func tokenize(lex *lexer) stateFn {
 	panic(fmt.Sprintf("Unknown sequence '%s', tokens: %v", stream, lex.tokens))
 }
 
+type production string
+
+var prodsymsre = regexp.MustCompile(`(\w+)|(\/[^/]+\/)|([^ |])|(?:'([^']+)')`)
+var prodsymsrebar = regexp.MustCompile(`((?:\w|\|{2})+)|(\/[^/]+\/)|([^ |])|(?:'([^']+)')`)
+
+func (prod production) symbols() []string {
+	fields := []string{}
+	for _, m := range prodsymsre.FindAllStringSubmatch(string(prod), -1) {
+		for _, sym := range m[1:] {
+			if len(sym) > 0 {
+				fields = append(fields, strings.TrimSpace(sym))
+			}
+		}
+	}
+	return fields
+}
+
+func (prod production) symbolsconcat() []string {
+	fields := []string{}
+	for _, m := range prodsymsrebar.FindAllStringSubmatch(string(prod), -1) {
+		for _, sym := range m[1:] {
+			if len(sym) > 0 {
+				fields = append(fields, strings.TrimSpace(sym))
+			}
+		}
+	}
+	return fields
+}
+func productionstostrings(prods []production) []string {
+	fields := make([]string, len(prods))
+	for i := range prods {
+		fields[i] = string(prods[i])
+	}
+	return fields
+}
+
+func (prod production) parse() {
+	G := Grammar{
+		Nonterminal{"production", []production{"symbol production", "symbol"}},
+		Nonterminal{"symbol", []production{"char||symbol", "char"}},
+		Nonterminal{"char",
+			[]production{
+				"alpha",
+				"digit",
+				"specialchar",
+				"quote||bnfchar||quote",
+				"escquote||quote||escquote",
+				"'ε'",
+			},
+		},
+		Nonterminal{"alpha", []production{`/[a-zA-Z]/`}},
+		Nonterminal{"digit", []production{`/[0-9]/`}},
+		Nonterminal{"specialchar", []production{`/[!@#%-_—=;:,<>]/`, `/[\?\$\^&\*\(\)\+\[\]\{\}\(\)\.\\]/`, "escquote"}},
+		Nonterminal{"escquote", []production{"'\"'"}},
+		Nonterminal{"bnfchar", []production{"'|'", "'||'", "'→'"}},
+		Nonterminal{"quote", []production{"'"}},
+	}
+	lex := &lexer{G: G, input: string(prod)}
+	for state := stateFn(tokenize); state != nil; state = state(lex) {
+	}
+	fmt.Println(G)
+	fmt.Println(G.terminals())
+	fmt.Println(prod)
+	fmt.Println(lex.tokens)
+
+	tree, n, err := G[0].parse(lex.tokens, G)
+	if err != nil {
+		panic(err)
+	}
+	if n < len(lex.tokens) {
+		panic(fmt.Errorf("Unable to parse '%s' at %d", preimage(lex.tokens[n:]), n))
+	}
+	fmt.Println(tree)
+}
+
 // Nonterminal represents a nonterminal in a context-free grammar.
 type Nonterminal struct {
 	Head        string
-	Productions []string
+	Productions []production
 }
 
 // AntiLeftRecurse eliminates left-recursion, if possible, by re-writing the
@@ -75,22 +150,22 @@ type Nonterminal struct {
 //     R → α R | β R | ε
 func (nt Nonterminal) AntiLeftRecurse() ([]Nonterminal, error) {
 	var Rsym string = "R"
-	static := []string{}
-	tails := []string{}
+	static := []production{}
+	tails := []production{}
 	for _, prod := range nt.Productions {
-		symbols := strings.Fields(prod)
+		symbols := prod.symbols()
 		if len(symbols) < 1 {
 			return nil, fmt.Errorf("Empty production %s → %s", nt.Head, prod)
 		}
-		if sym := strings.Fields(prod)[0]; sym == nt.Head {
+		if sym := prod.symbols()[0]; sym == nt.Head {
 			if len(symbols) < 2 {
 				return nil, fmt.Errorf("Cannot anti recurse %s → %s, too few symbols", nt.Head, prod)
 			}
 			α := strings.Join(symbols[1:], " ")
-			tails = append(tails, fmt.Sprintf("%s %s", α, Rsym))
+			tails = append(tails, production(fmt.Sprintf("%s %s", α, Rsym)))
 		} else {
-			γ := strings.TrimSpace(prod)
-			static = append(static, fmt.Sprintf("%s %s", γ, Rsym))
+			γ := strings.TrimSpace(string(prod))
+			static = append(static, production(fmt.Sprintf("%s %s", γ, Rsym)))
 		}
 	}
 	if len(static) == len(nt.Productions) {
@@ -109,7 +184,7 @@ func (nt Nonterminal) String() string {
 	if len(nt.Productions) == 0 {
 		panic("Cannot display empty Nonterminal")
 	}
-	return fmt.Sprintf("{%s → %v}", nt.Head, strings.Join(nt.Productions, " | "))
+	return fmt.Sprintf("{%s → %v}", nt.Head, strings.Join(productionstostrings(nt.Productions), " | "))
 }
 
 func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
@@ -117,7 +192,7 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 		children := []node{}
 		pos := 0
 		var parser func(int) (*node, int, error)
-		for _, sym := range strings.Fields(prod) {
+		for _, sym := range prod.symbols() {
 			if tk, ok := G.parsetoken(sym); ok {
 				parser = func(i int) (*node, int, error) {
 					if i >= len(tokens) {
@@ -125,6 +200,10 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 					}
 					if tokens[i].string == tk.string {
 						return &node{symbol: tk.string}, 1, nil
+					} else if m := regexptk.FindStringSubmatch(tk.string); len(m) > 1 {
+						if re := regexp.MustCompile(m[1]); re.FindString(tokens[i].string) == tokens[i].string {
+							return &node{symbol: tokens[i].string}, 1, nil
+						}
 					}
 					return nil, -1, fmt.Errorf("Unknown Token %v", tokens[0])
 				}
@@ -134,6 +213,7 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 						parser = func(i int) (*node, int, error) {
 							return subnt.parse(tokens[i:], G)
 						}
+						break // crucial to prevent subnt in the function above being re-written
 					}
 				}
 			}
@@ -171,11 +251,10 @@ func (G Grammar) terminals() []Token {
 	}
 	tokens := []Token{}
 	tokenmap := map[string]bool{} // map for uniqueness
-	quoted := regexp.MustCompile("`([^`]+)`")
+
 	for _, nt := range G {
 		for _, prod := range nt.Productions {
-			for _, rawsym := range strings.Fields(prod) {
-				sym := quoted.ReplaceAllString(rawsym, "$1")
+			for _, sym := range prod.symbols() {
 				if _, ok := ntmap[sym]; !ok {
 					if _, ok := tokenmap[sym]; !ok {
 						tokens = append(tokens, Token{sym, ""})
@@ -188,9 +267,17 @@ func (G Grammar) terminals() []Token {
 	return tokens
 }
 
+var regexptk = regexp.MustCompile(`\/([^/]+)\/`)
+
 func (G Grammar) parsetoken(s string) (Token, bool) {
+	trim := strings.TrimSpace(s)
 	for _, tk := range G.terminals() {
-		if strings.TrimSpace(s) == tk.string {
+		if m := regexptk.FindStringSubmatch(tk.string); len(m) > 1 {
+			if re := regexp.MustCompile(m[1]); len(trim) > 0 && re.FindString(trim) == trim {
+				return Token{trim, s}, true
+			}
+		}
+		if trim == tk.string {
 			return Token{tk.string, s}, true
 		}
 	}
@@ -202,14 +289,23 @@ func (G Grammar) String() string {
 	for _, nt := range G {
 		ntmap[nt.Head] = true
 	}
-	prettyprod := func(prod string) string {
+	prettyprod := func(prod production) string {
 		pieces := []string{}
-		for _, sym := range strings.Fields(prod) {
-			if _, ok := ntmap[sym]; ok {
-				pieces = append(pieces, chalk.Blue.NewStyle().Style(sym))
-
-			} else {
+		for _, sym := range prod.symbolsconcat() {
+			if sym == "||" {
 				pieces = append(pieces, sym)
+			} else {
+				parts := []string{}
+				for _, p := range strings.Split(sym, "||") {
+					if _, ok := ntmap[p]; ok {
+						parts = append(parts, chalk.Blue.NewStyle().Style(p))
+					} else if p[0] == '/' && p[len(p)-1] == '/' {
+						parts = append(parts, "/"+chalk.Magenta.NewStyle().Style(p[1:len(p)-1])+"/")
+					} else {
+						parts = append(parts, p)
+					}
+				}
+				pieces = append(pieces, strings.Join(parts, "||"))
 			}
 		}
 		return strings.Join(pieces, " ")
@@ -222,6 +318,9 @@ func (G Grammar) String() string {
 	}
 	s := ""
 	for _, nt := range G {
+		if len(nt.Productions) == 0 {
+			panic(fmt.Sprintf("Nonterminal %v has no productions", nt))
+		}
 		s += fmt.Sprintf("%-*s → %v\n", padlen, nt.Head, prettyprod(nt.Productions[0]))
 		for _, prod := range nt.Productions[1:] {
 			s += fmt.Sprintf("%*s | %v\n", padlen, "", prettyprod(prod))

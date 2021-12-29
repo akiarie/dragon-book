@@ -1,10 +1,10 @@
 package grammar
 
 import (
-	"fmt"
 	"testing"
 )
 
+/*
 func TestAntirecurse(t *testing.T) {
 	G := Grammar{
 		Nonterminal{"A", []string{"A α", "A β", "γ", "δ"}},
@@ -43,7 +43,6 @@ func TestAntirecurse(t *testing.T) {
 	fmt.Println(newG)
 }
 
-/*
 func TestBNF(t *testing.T) {
 	G := Grammar{
 		Nonterminal{"bnfgrammar", []string{"bnfgrammar nonterminal", "nonterminal"}},
@@ -88,3 +87,8 @@ func TestBNF(t *testing.T) {
 		fmt.Println(tree)
 }
 */
+
+func TestProdExpr(t *testing.T) {
+	prod := production("+ term { print('+') } rest")
+	prod.parse()
+}
