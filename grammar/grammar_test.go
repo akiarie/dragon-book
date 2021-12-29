@@ -1,61 +1,47 @@
 package grammar
 
-import (
-	"fmt"
-	"strings"
-	"testing"
-)
-
-// Figure 2.16
-var G216 = Grammar{
-	Nonterminal{
-		"stmt",
-		[]string{
-			"expr ;",
-			"if ( expr ) stmt",
-			"for ( optexpr ; optexpr ; optexpr ) stmt",
-			"other",
+/*
+func TestBNF(t *testing.T) {
+	G := Grammar{
+		Nonterminal{"bnfgrammar", []string{"bnfgrammar nonterminal", "nonterminal"}},
+		Nonterminal{"nonterminal", []string{"nonterminal `|` production", "name `→` production"}},
+		Nonterminal{"production", []string{"production symbol", "symbol"}},
+		Nonterminal{"name",
+			[]string{
+				"name||alpha",
+				"name||digit",
+				"alpha",
+			},
 		},
-	},
-	Nonterminal{
-		"optexpr",
-		[]string{
-			"ε",
-			"expr",
+		Nonterminal{"symbol",
+			[]string{
+				"symbol||symbol",
+				"alpha",
+				"digit",
+				"specialchar",
+				"quote||bnfchar||quote",
+				"escquote||quote||escquote",
+				"ε",
+			},
 		},
-	},
-}
-
-func TestG216(t *testing.T) {
-	G := G216
-	for _, nt := range G {
-		if len(nt.Productions) == 0 {
-			t.Errorf("Nonterminal %s with no productions", nt.Head)
-		}
-		for _, prod := range nt.Productions {
-			prodarr := strings.Fields(prod)
-			for _, s := range prodarr {
-				found := false
-				if _, ok := G.parsetoken(s); ok {
-					found = true
-				} else {
-					// if not token, check for Nonterminal
-					for _, subnt := range G {
-						if s == subnt.Head {
-							found = true
-						}
-					}
-				}
-				if !found {
-					t.Errorf("Invalid symbol '%s' in Grammar neither token nor Nonterminal", s)
-				}
-			}
-		}
+		Nonterminal{"alpha", strings.Split("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "")},
+		Nonterminal{"digit", strings.Split("0123456789", "")},
+		Nonterminal{"specialchar", append(strings.Split("!?@#$%^&*()-_—=+[]{}();:,.<>\"\\/", ""), "escquote")},
+		Nonterminal{"escquote", []string{"'"}},
+		Nonterminal{"bnfchar", []string{"`|`", "`||`", "`→`"}},
+		Nonterminal{"quote", []string{"`"}},
 	}
+	_ = G
+		fmt.Println(G.terminals())
 
-	tree, err := G.ParseAST(`for ( ; expr ; expr ) other`)
-	if err != nil {
-		t.Errorf("Cannot parse input: %s", err)
-	}
-	fmt.Println(tree)
+		g216file, err := os.ReadFile("bnf/dragon-216.grm")
+		if err != nil {
+			t.Errorf("Cannot read file: %s", err)
+		}
+		tree, err := G.ParseAST(g216file)
+		if err != nil {
+			t.Errorf("Cannot parse input: %s", err)
+		}
+		fmt.Println(tree)
 }
+*/
