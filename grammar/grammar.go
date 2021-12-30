@@ -17,8 +17,11 @@ type Token struct {
 }
 
 func (tk Token) String() string {
+	if tk.string == "" {
+		tk.string = "[space]"
+	}
 	if tk.preimage != "" {
-		return fmt.Sprintf("{%s %q}", tk.string, tk.preimage)
+		return fmt.Sprintf("%s", tk.string)
 	}
 	return tk.string
 }
@@ -78,17 +81,34 @@ func (prod production) symbols() []string {
 	return fields
 }
 
-func (prod production) symbolsconcat() []string {
-	fields := []string{}
+type prodsymbol struct {
+	string
+	canspace bool
+}
+
+func (prod production) symbolsconcat(split bool) []prodsymbol {
+	symbols := []string{}
 	for _, m := range prodsymsrebar.FindAllStringSubmatch(string(prod), -1) {
 		for _, sym := range m[1:] {
 			if len(sym) > 0 {
-				fields = append(fields, strings.TrimSpace(sym))
+				symbols = append(symbols, strings.TrimSpace(sym))
 			}
+		}
+	}
+	fields := []prodsymbol{}
+	for i, sym := range symbols {
+		canspace := i > 0 // can space only if there are other elems
+		if parts := strings.Split(sym, "||"); split && len(parts) > 0 {
+			for j, part := range parts {
+				fields = append(fields, prodsymbol{strings.TrimSpace(part), canspace && j == 0}) // only last concat can
+			}
+		} else {
+			fields = append(fields, prodsymbol{strings.TrimSpace(sym), canspace})
 		}
 	}
 	return fields
 }
+
 func productionstostrings(prods []production) []string {
 	fields := make([]string, len(prods))
 	for i := range prods {
@@ -113,7 +133,7 @@ func (prod production) parse() {
 		},
 		Nonterminal{"alpha", []production{`/[a-zA-Z]/`}},
 		Nonterminal{"digit", []production{`/[0-9]/`}},
-		Nonterminal{"specialchar", []production{`/[!@#%-_—=;:,<>]/`, `/[\?\$\^&\*\(\)\+\[\]\{\}\(\)\.\\]/`, "escquote"}},
+		Nonterminal{"specialchar", []production{`/[-!@#%_—=;:,<>]/`, `/[\?\$\^&\*\(\)\+\[\]\{\}\(\)\.\\]/`, "escquote"}},
 		Nonterminal{"escquote", []production{"'\"'"}},
 		Nonterminal{"bnfchar", []production{"'|'", "'||'", "'→'"}},
 		Nonterminal{"quote", []production{"'"}},
@@ -192,8 +212,14 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 		children := []node{}
 		pos := 0
 		var parser func(int) (*node, int, error)
-		for _, sym := range prod.symbols() {
-			if tk, ok := G.parsetoken(sym); ok {
+		for _, sym := range prod.symbolsconcat(true) {
+			if sym.canspace {
+				for len(tokens[pos].string) == 0 {
+					fmt.Printf("%v: Ignored %q with [%s, %t] in [%s] from %s\n", children, tokens[pos], sym.string, sym.canspace, prod, nt)
+					pos += 1
+				}
+			}
+			if tk, ok := G.parsetoken(sym.string); ok {
 				parser = func(i int) (*node, int, error) {
 					if i >= len(tokens) {
 						return nil, -1, fmt.Errorf("Empty token list %v", tokens)
@@ -201,7 +227,8 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 					if tokens[i].string == tk.string {
 						return &node{symbol: tk.string}, 1, nil
 					} else if m := regexptk.FindStringSubmatch(tk.string); len(m) > 1 {
-						if re := regexp.MustCompile(m[1]); re.FindString(tokens[i].string) == tokens[i].string {
+						re := regexp.MustCompile(m[1])
+						if len(tokens[i].string) > 0 && re.FindString(tokens[i].string) == tokens[i].string {
 							return &node{symbol: tokens[i].string}, 1, nil
 						}
 					}
@@ -209,7 +236,7 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 				}
 			} else {
 				for _, subnt := range G {
-					if sym == subnt.Head {
+					if sym.string == subnt.Head {
 						parser = func(i int) (*node, int, error) {
 							return subnt.parse(tokens[i:], G)
 						}
@@ -218,12 +245,16 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 				}
 			}
 			if parser == nil { // should be impossible, but in case
-				panic(fmt.Sprintf("Unknown symbol: %s", sym))
+				panic(fmt.Sprintf("Unknown symbol: %s", sym.string))
 			}
+			fmt.Printf("%v: Parse %q with [%s, %t] in [%s] from %s\n", children, tokens[pos], sym.string, sym.canspace, prod, nt)
 			if child, shift, err := parser(pos); err == nil {
 				children = append(children, *child)
+				fmt.Printf("%v: Parsed '%s' with [%s, %t] in [%s] from %s\n", children, tokens[pos:pos+shift], sym.string, sym.canspace, prod, nt)
 				pos += shift
 			} else {
+				fmt.Println(err)
+				fmt.Printf("%v: Cannot parse %q with [%s, %t] in [%s] from %s\n", children, tokens[pos], sym.string, sym.canspace, prod, nt)
 				goto nextprod
 			}
 		}
@@ -273,7 +304,7 @@ func (G Grammar) parsetoken(s string) (Token, bool) {
 	trim := strings.TrimSpace(s)
 	for _, tk := range G.terminals() {
 		if m := regexptk.FindStringSubmatch(tk.string); len(m) > 1 {
-			if re := regexp.MustCompile(m[1]); len(trim) > 0 && re.FindString(trim) == trim {
+			if re := regexp.MustCompile(m[1]); re.FindString(trim) == trim {
 				return Token{trim, s}, true
 			}
 		}
@@ -291,12 +322,12 @@ func (G Grammar) String() string {
 	}
 	prettyprod := func(prod production) string {
 		pieces := []string{}
-		for _, sym := range prod.symbolsconcat() {
-			if sym == "||" {
-				pieces = append(pieces, sym)
+		for _, sym := range prod.symbolsconcat(false) {
+			if sym.string == "||" {
+				pieces = append(pieces, sym.string)
 			} else {
 				parts := []string{}
-				for _, p := range strings.Split(sym, "||") {
+				for _, p := range strings.Split(sym.string, "||") {
 					if _, ok := ntmap[p]; ok {
 						parts = append(parts, chalk.Blue.NewStyle().Style(p))
 					} else if p[0] == '/' && p[len(p)-1] == '/' {
