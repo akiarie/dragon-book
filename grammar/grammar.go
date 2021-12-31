@@ -119,7 +119,20 @@ func productionstostrings(prods []production) []string {
 
 func (prod production) parse() {
 	G := Grammar{
-		Nonterminal{"production", []production{"symbol production", "symbol"}},
+		Nonterminal{"production",
+			[]production{
+				"symbol production", "symbol",
+				"command production", "command",
+			},
+		},
+		Nonterminal{"command",
+			[]production{
+				"{ print(string) }",
+			},
+		},
+		Nonterminal{"string", []production{"quote||literal||quote"}},
+		Nonterminal{"literal", []production{"symbol", "symbol literal"}},
+		Nonterminal{"name", []production{"alpha||name", "alpha||digit", "alpha"}},
 		Nonterminal{"symbol", []production{"char||symbol", "char"}},
 		Nonterminal{"char",
 			[]production{
@@ -127,33 +140,34 @@ func (prod production) parse() {
 				"digit",
 				"specialchar",
 				"quote||bnfchar||quote",
-				"escquote||quote||escquote",
+				"quote",
 				"'ε'",
 			},
 		},
 		Nonterminal{"alpha", []production{`/[a-zA-Z]/`}},
 		Nonterminal{"digit", []production{`/[0-9]/`}},
-		Nonterminal{"specialchar", []production{`/[-!@#%_—=;:,<>]/`, `/[\?\$\^&\*\(\)\+\[\]\{\}\(\)\.\\]/`, "escquote"}},
-		Nonterminal{"escquote", []production{"'\"'"}},
+		Nonterminal{"specialchar", []production{`/[-!@#%_—=;:,<>"]/`, `/[\?\$\^&\*\(\)\+\[\]\(\)\.\\]/`, "`", "escquote"}},
 		Nonterminal{"bnfchar", []production{"'|'", "'||'", "'→'"}},
 		Nonterminal{"quote", []production{"'"}},
 	}
-	lex := &lexer{G: G, input: string(prod)}
-	for state := stateFn(tokenize); state != nil; state = state(lex) {
-	}
 	fmt.Println(G)
-	fmt.Println(G.terminals())
-	fmt.Println(prod)
-	fmt.Println(lex.tokens)
+	//lex := &lexer{G: G, input: string(prod)}
+	//for state := stateFn(tokenize); state != nil; state = state(lex) {
+	//}
+	//fmt.Println(G.terminals())
+	//fmt.Println(prod)
+	//fmt.Println(lex.tokens)
 
-	tree, n, err := G[0].parse(lex.tokens, G)
-	if err != nil {
-		panic(err)
-	}
-	if n < len(lex.tokens) {
-		panic(fmt.Errorf("Unable to parse '%s' at %d", preimage(lex.tokens[n:]), n))
-	}
-	fmt.Println(tree)
+	/*
+		tree, n, err := G[0].parse(lex.tokens, G)
+		if err != nil {
+			panic(err)
+		}
+		if n < len(lex.tokens) {
+			panic(fmt.Errorf("Unable to parse '%s' at %d", preimage(lex.tokens[n:]), n))
+		}
+		fmt.Println(tree)
+	*/
 }
 
 // Nonterminal represents a nonterminal in a context-free grammar.
@@ -215,7 +229,6 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 		for _, sym := range prod.symbolsconcat(true) {
 			if sym.canspace {
 				for len(tokens[pos].string) == 0 {
-					fmt.Printf("%v: Ignored %q with [%s, %t] in [%s] from %s\n", children, tokens[pos], sym.string, sym.canspace, prod, nt)
 					pos += 1
 				}
 			}
@@ -247,14 +260,14 @@ func (nt Nonterminal) parse(tokens []Token, G Grammar) (*node, int, error) {
 			if parser == nil { // should be impossible, but in case
 				panic(fmt.Sprintf("Unknown symbol: %s", sym.string))
 			}
-			fmt.Printf("%v: Parse %q with [%s, %t] in [%s] from %s\n", children, tokens[pos], sym.string, sym.canspace, prod, nt)
+			fmt.Printf("Parse %q with [%s, %t] in [%s] from %s\n", tokens[pos], sym.string, sym.canspace, prod, nt)
 			if child, shift, err := parser(pos); err == nil {
 				children = append(children, *child)
-				fmt.Printf("%v: Parsed '%s' with [%s, %t] in [%s] from %s\n", children, tokens[pos:pos+shift], sym.string, sym.canspace, prod, nt)
+				fmt.Printf("%v\nParsed '%s' with [%s, %t] in [%s] from %s\n", children, tokens[pos:pos+shift], sym.string, sym.canspace, prod, nt)
 				pos += shift
 			} else {
 				fmt.Println(err)
-				fmt.Printf("%v: Cannot parse %q with [%s, %t] in [%s] from %s\n", children, tokens[pos], sym.string, sym.canspace, prod, nt)
+				fmt.Printf("%v\nCannot parse %q with [%s, %t] in [%s] from %s\n", children, tokens[pos], sym.string, sym.canspace, prod, nt)
 				goto nextprod
 			}
 		}
