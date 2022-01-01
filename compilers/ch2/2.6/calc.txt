@@ -1,3 +1,4 @@
-2 + 5 // hello, world!
+2 + .5 // hello, world!
  /* dude */ + 7
-  * 2
+  * 0.5 
+  / 27.2 + 2.34
