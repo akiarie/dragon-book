@@ -1,8 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -142,6 +143,36 @@ func parsetoken(input string, pos int) (*token, int, error) {
 		}
 		st++
 	}
+	// ignore comments
+	if st+1 < len(input) && input[st] == '/' {
+		prevst := st
+		st += 1
+		if input[st] == '/' {
+			for st += 1; st < len(input); st++ {
+				if input[st] == '\n' {
+					st++ // skip newline
+					tk, shift, err := parsetoken(input, st)
+					if err != nil {
+						return nil, -1, err
+					}
+					return tk, (st - pos) + shift, nil
+				}
+			}
+		} else if input[st] == '*' {
+			for st += 1; st+1 < len(input); st++ {
+				if input[st:st+2] == "*/" {
+					st += 2 // input[st+1] == '/'
+					tk, shift, err := parsetoken(input, st)
+					if err != nil {
+						return nil, -1, err
+					}
+					return tk, (st - pos) + shift, nil
+				}
+			}
+		}
+		return nil, -1, fmt.Errorf("Un-terminated comment %q", input[prevst:st])
+	}
+
 	if st >= len(input) {
 		return &token{class: tkSpace, value: tkSpace, lexeme: input[pos:]}, len(input[pos:]), nil
 	}
@@ -182,7 +213,7 @@ func parsetoken(input string, pos int) (*token, int, error) {
 		}
 	}
 
-	return nil, -1, fmt.Errorf("Unknown characters %q", input[pos:st+1])
+	return nil, -1, fmt.Errorf("Unknown characters %q", input[pos:])
 }
 
 func tokenize(input string) ([]token, error) {
@@ -201,18 +232,15 @@ func tokenize(input string) ([]token, error) {
 }
 
 func main() {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("Infix → RPN converter")
-	for {
-		fmt.Print("-> ")
-		text, _ := reader.ReadString('\n')
-		tokens, err := tokenize(text)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		p := &parser{input: tokens}
-		p.expr()
-		fmt.Println(p.output)
+	bytes, err := ioutil.ReadAll(os.Stdin)
+	if err != nil {
+		log.Fatalln(err)
 	}
+	tokens, err := tokenize(string(bytes))
+	if err != nil {
+		log.Fatalln(err)
+	}
+	p := &parser{input: tokens}
+	p.expr()
+	fmt.Println(p.output)
 }
