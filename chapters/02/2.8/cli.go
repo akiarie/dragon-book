@@ -1,7 +1,27 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+)
 
 func main() {
-	fmt.Println("Hello, world!")
+	raw := `
+{
+    int i; int j; float[100] a; float v; float x;
+    while ( true ) {
+        do i = i+1; while ( a[i] < v );
+        do j = j-1; while ( a[j] > v ); 
+        if ( i >= j ) break;
+        x = a[i]; a[i] = a[j]; a[j] = x;
+    } 
+}
+`
+	tokens, lines, err := tokenize(raw)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	p := &parser{input: tokens, lines: lines, raw: raw}
+	p.block()
+	fmt.Println(p.output)
 }
