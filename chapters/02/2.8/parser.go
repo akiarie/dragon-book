@@ -8,9 +8,34 @@ import (
 	"github.com/fatih/color"
 )
 
+func newtable() *table {
+	return &table{[]string{}, []string{}, nil}
+}
+
 type table struct {
 	labels []string
 	vars   []string
+	escape []string
+}
+
+func (t *table) enterloop(esc string) {
+	if t.escape == nil {
+		t.escape = []string{esc}
+	} else {
+		t.escape = append(t.escape, esc)
+	}
+}
+
+func (t *table) breakloop(pop bool) (string, error) {
+	if t.escape == nil || len(t.escape) == 0 {
+		return "", fmt.Errorf("cannot break when outside loop")
+	}
+	n := len(t.escape) - 1
+	esc := t.escape[n]
+	if pop {
+		t.escape = t.escape[:n]
+	}
+	return esc, nil
 }
 
 func (t *table) newvar() string {
@@ -43,7 +68,15 @@ type command int
 const comBreak command = iota
 
 func (com command) gen(p *parser, t *table) error {
-	return fmt.Errorf("command NOT IMPLEMENTED")
+	if t.escape == nil {
+		return fmt.Errorf("break statement out of loop")
+	}
+	after, err := t.breakloop(false)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(p, "goto %s\n", after)
+	return nil
 }
 
 type decl struct {
@@ -60,7 +93,12 @@ func (d decl) String() string {
 }
 
 func (d decl) gen(p *parser, t *table) error {
-	return nil // TODO: does this make sense?
+	if d.num == nil {
+		fmt.Fprintf(p, "declare %s %s\n", d.id, d._type)
+	} else {
+		fmt.Fprintf(p, "declare %s %s[%s]\n", d.id, d._type, d.num)
+	}
+	return nil
 }
 
 type ifstmt struct {
@@ -100,8 +138,12 @@ func (while whilestmt) gen(p *parser, t *table) error {
 		return err
 	}
 	fmt.Fprintf(p, "ifFalse %s goto %s\n", _bool, after)
+	t.enterloop(after)
 	err = while.stmt.gen(p, t)
 	if err != nil {
+		return err
+	}
+	if _, err := t.breakloop(true); err != nil {
 		return err
 	}
 	fmt.Fprintf(p, "goto %s:\n", before)
@@ -117,8 +159,12 @@ type dostmt struct {
 func (do dostmt) gen(p *parser, t *table) error {
 	before, after := t.newlabel(), t.newlabel()
 	fmt.Fprintf(p, "%s:\n", before)
+	t.enterloop(after)
 	err := do.stmt.gen(p, t)
 	if err != nil {
+		return err
+	}
+	if _, err := t.breakloop(true); err != nil {
 		return err
 	}
 	_bool, err := p.rvalue(do.expr, t)
@@ -133,7 +179,7 @@ func (do dostmt) gen(p *parser, t *table) error {
 
 type composite interface {
 	h() interface{}
-	t() composite
+	t() (composite, error)
 	compose(string, string) string
 }
 
@@ -141,17 +187,33 @@ type expr []rel
 
 func (expr expr) h() interface{} { return expr[0] }
 
-func (expr expr) t() composite {
+func (expr expr) t() (composite, error) {
 	if len(expr) > 1 {
-		return expr[1:]
+		return expr[1:], nil
 	}
-	return nil
+	return nil, fmt.Errorf("expr has no tail")
 }
 
 func (expr expr) compose(a, b string) string { return fmt.Sprintf("%s = %s", a, b) }
 
-func (expr expr) gen(p *parser, t *table) error {
-	return fmt.Errorf("expr NOT IMPLEMENTED")
+func (exp expr) gen(p *parser, t *table) error {
+	if len(exp) == 0 {
+		return fmt.Errorf("cannot generate empty expr")
+	} else if len(exp) == 1 {
+		fmt.Fprintf(p, "%s\n", exp[0])
+		return nil
+	}
+
+	lval, err := p.lvalue(exp[0], t)
+	if err != nil {
+		return err
+	}
+	rval, err := p.rvalue(expr(exp[1:]), t)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(p, "%s = %s\n", lval, rval)
+	return nil
 }
 
 func (ex expr) String() string {
@@ -171,7 +233,12 @@ type rel struct {
 }
 
 func (rel rel) h() interface{} { return rel.head }
-func (rel rel) t() composite   { return rel.tail }
+func (rel rel) t() (composite, error) {
+	if rel.tail != nil {
+		return rel.tail, nil
+	}
+	return nil, fmt.Errorf("rel has no tail")
+}
 
 func (rel rel) compose(a, b string) string {
 	return fmt.Sprintf("%s %s %s", a, rel.tail.boolop, b)
@@ -179,7 +246,7 @@ func (rel rel) compose(a, b string) string {
 
 func (t rel) String() string {
 	if t.tail == nil {
-		return fmt.Sprintf("%v", t.head)
+		return fmt.Sprintf("%s", t.head)
 	}
 	return fmt.Sprintf("%s %v %s", t.head, t.tail.boolop, t.tail.rel)
 }
@@ -193,7 +260,12 @@ type arithm struct {
 }
 
 func (arithm arithm) h() interface{} { return arithm.head }
-func (arithm arithm) t() composite   { return arithm.tail }
+func (arithm arithm) t() (composite, error) {
+	if arithm.tail != nil {
+		return arithm.tail, nil
+	}
+	return nil, fmt.Errorf("arithm has no tail")
+}
 func (arithm arithm) compose(a, b string) string {
 	return fmt.Sprintf("%s %v %s", a, arithm.tail.sign, b)
 }
@@ -214,7 +286,12 @@ type term struct {
 }
 
 func (term term) h() interface{} { return term.head }
-func (term term) t() composite   { return term.tail }
+func (term term) t() (composite, error) {
+	if term.tail != nil {
+		return term.tail, nil
+	}
+	return nil, fmt.Errorf("term has no tail")
+}
 func (term term) compose(a, b string) string {
 	return fmt.Sprintf("%s %v %s", a, term.tail.op, b)
 }
@@ -233,7 +310,6 @@ const (
 	factypeBool
 	factypeConst
 	factypeAccess
-	factypeExpr
 )
 
 type factor struct {
@@ -241,28 +317,26 @@ type factor struct {
 	node  interface{}
 }
 
+func (f factor) String() string {
+	return fmt.Sprintf("%s", f.node)
+}
+
 func (f factor) rvalue(p *parser, t *table) (string, error) {
 	switch f.ftype {
 	case factypeId, factypeBool, factypeConst:
-		return fmt.Sprintf("%v", f.node), nil
+		return fmt.Sprintf("%s", f.node), nil
 	case factypeAccess:
-		arr, ok := f.node.(access)
+		acc, ok := f.node.(access)
 		if !ok {
 			panic(fmt.Sprintf("invalid access factype for %v", f))
 		}
-		tmp := t.newvar()
-		lval, err := p.lvalue(arr, t)
+		lval, err := p.lvalue(acc, t)
 		if err != nil {
 			return "", err
 		}
+		tmp := t.newvar()
 		fmt.Fprintf(p, "%s = %s\n", tmp, lval)
 		return tmp, nil
-	case factypeExpr:
-		expr, ok := f.node.(expr)
-		if !ok {
-			panic(fmt.Sprintf("invalid expr factype for %v", f))
-		}
-
 	default:
 		return "", fmt.Errorf("unknown factor %T as %v", f, f)
 	}
@@ -272,6 +346,10 @@ func (f factor) rvalue(p *parser, t *table) (string, error) {
 type access struct {
 	id string
 	arithm
+}
+
+func (acc access) String() string {
+	return fmt.Sprintf("%s [ %v ]", acc.id, acc.arithm)
 }
 
 type stream []token
@@ -285,7 +363,6 @@ type parser struct {
 }
 
 func (p *parser) Write(b []byte) (int, error) {
-	fmt.Printf(string(b))
 	p.output += string(b)
 	return len(b), nil
 }
@@ -330,17 +407,72 @@ func (p *parser) error(format string, a ...interface{}) error {
 }
 
 func (p *parser) lvalue(stmt interface{}, t *table) (string, error) {
-	return "", fmt.Errorf("lvalue NOT IMPLEMENTED")
-}
-
-func (p *parser) rvalue(stmt interface{}, t *table) (string, error) {
 	switch stmt.(type) {
 	case factor:
+		// lvalue factor can only be identifier
 		f, _ := stmt.(factor)
+		switch f.ftype {
+		case factypeId:
+			s, _ := f.node.(string)
+			return s, nil
+		case factypeAccess:
+			// unravel factor and recurse to below
+			acc, _ := f.node.(access)
+			return p.lvalue(acc, t)
+		}
+		return "", fmt.Errorf("only id and access factors have lvalues: %T as %v unknown", f, f)
+	case access:
+		acc, _ := stmt.(access)
+		rval, err := p.rvalue(acc.arithm, t)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s [ %s ]", acc.id, rval), nil
+	case composite:
+		cmp, _ := stmt.(composite)
+		// should throw error b/c only tailless composites have lvals
+		if _, err := cmp.t(); err != nil {
+			return p.lvalue(cmp.h(), t)
+		}
+	}
+	return "", fmt.Errorf("invalid type %T as %v for case", stmt, stmt)
+}
+
+func (p *parser) rvalue(cmp composite, t *table) (string, error) {
+	switch cmp.h().(type) {
+	case factor:
+		f, _ := cmp.h().(factor)
 		return f.rvalue(p, t)
 	case composite:
+		h, _ := cmp.h().(composite)
+		if tail, err := cmp.t(); err == nil {
+			var valuefind func() (string, error)
+			switch h.(type) {
+			case expr:
+				valuefind = func() (string, error) {
+					return p.lvalue(h, t)
+				}
+			default:
+				valuefind = func() (string, error) {
+					return p.rvalue(h, t)
+				}
+			}
+			hval, err := valuefind()
+			if err != nil {
+				return "", err
+			}
+			trval, err := p.rvalue(tail, t)
+			if err != nil {
+				return "", err
+			}
+			tmp := t.newvar()
+			fmt.Fprintf(p, "%s = %s\n", tmp, cmp.compose(hval, trval))
+			return tmp, nil
+		} else {
+			return p.rvalue(h, t)
+		}
 	default:
-		return "", fmt.Errorf("no rvalue for %T as %v", stmt, stmt)
+		return "", fmt.Errorf("unknown head type %T as %v for composite", cmp.h(), cmp.h())
 	}
 }
 
@@ -574,22 +706,23 @@ func (p *parser) factor(input stream) (*factor, int, error) {
 				if tk := input[pos]; tk.class != tkPunctuation || tk.value != "]" {
 					return nil, -1, p.error("array access not closed: %v", err)
 				}
-				return &factor{factypeAccess, access{input[0].value, *arithm}}, pos + 1, nil
+				return &factor{factypeAccess, access{id: input[0].value, arithm: *arithm}}, pos + 1, nil
 			}
 		}
 		return &factor{factypeId, input[0].value}, 1, nil
 	}
 
+	// FIXME: add expr factors
 	// ( expr )
 	if tk := input[0]; tk.class != tkPunctuation || tk.value != "(" {
 		return nil, -1, fmt.Errorf("cannot parse factor %q", tk)
 	}
-	expr, step, err := p.expr(input[1:])
+	_, step, err := p.expr(input[1:])
 	if err != nil {
 		return nil, -1, p.error("bracketed expression parse error: %v", err)
 	}
 	if tk := input[1+step]; tk.class != tkPunctuation || tk.value != ")" {
 		return nil, -1, p.error("bracketed not closed: %v", err)
 	}
-	return &factor{factypeExpr, expr}, 2 + step, nil
+	return nil, -1, fmt.Errorf("factor expressions not implemented")
 }

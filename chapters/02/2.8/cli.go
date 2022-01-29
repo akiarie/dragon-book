@@ -23,8 +23,7 @@ func main() {
 	}
 	p := &parser{input: tokens, lines: lines, raw: raw}
 	bl := p.block()
-	T := &table{[]string{}, []string{}}
-	if err := bl.gen(p, T); err != nil {
+	if err := bl.gen(p, newtable()); err != nil {
 		log.Fatalln(err)
 	}
 	fmt.Println(p.output)
