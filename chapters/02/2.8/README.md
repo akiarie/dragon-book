@@ -85,18 +85,3 @@ num     → [0-9]+
 I give the productions for _id_ and _num_ as regular expressions to avoid prolixity. Also, the
 `boolean` type is defined to have the numerical values `true = 1` and `false = 0`, as one would
 expect.
-
-The syntax tree (following the layout in the book) will consist of nonterminals each represented as
-a `node`,
-```go
-type node interface {
-    gen() (string, error)
-}
-```
-with appropriate concretisations `stmt` and `expr`
-```go
-type stmt node
-
-type expr node
-
-```
