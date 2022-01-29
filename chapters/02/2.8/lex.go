@@ -88,7 +88,7 @@ func parsetoken(l *lexer) (*token, error) {
 	}
 
 	// op
-	if strings.IndexByte("+-*/", l.input[l.pos]) != -1 {
+	if strings.IndexByte("+-*/%", l.input[l.pos]) != -1 {
 		tk := &token{class: tkOp, value: fmt.Sprintf("%c", l.input[l.pos]), pos: l.pos}
 		l.pos++
 		return tk, nil

@@ -93,10 +93,12 @@ func (d decl) String() string {
 }
 
 func (d decl) gen(p *parser, t *table) error {
-	if d.num == nil {
-		fmt.Fprintf(p, "declare %s %s\n", d.id, d._type)
-	} else {
-		fmt.Fprintf(p, "declare %s %s[%s]\n", d.id, d._type, d.num)
+	if p.showdecl {
+		if d.num == nil {
+			fmt.Fprintf(p, "declare %s %s\n", d.id, d._type)
+		} else {
+			fmt.Fprintf(p, "declare %s %s[%s]\n", d.id, d._type, d.num)
+		}
 	}
 	return nil
 }
@@ -355,11 +357,12 @@ func (acc access) String() string {
 type stream []token
 
 type parser struct {
-	pos    int
-	lines  []int
-	raw    string
-	input  stream
-	output string
+	showdecl bool
+	pos      int
+	lines    []int
+	raw      string
+	input    stream
+	output   string
 }
 
 func (p *parser) Write(b []byte) (int, error) {
@@ -442,7 +445,21 @@ func (p *parser) rvalue(cmp composite, t *table) (string, error) {
 	switch cmp.h().(type) {
 	case factor:
 		f, _ := cmp.h().(factor)
-		return f.rvalue(p, t)
+		if tail, err := cmp.t(); err == nil {
+			frval, err := f.rvalue(p, t)
+			if err != nil {
+				return "", err
+			}
+			trval, err := p.rvalue(tail, t)
+			if err != nil {
+				return "", err
+			}
+			tmp := t.newvar()
+			fmt.Fprintf(p, "%s = %s\n", tmp, cmp.compose(frval, trval))
+			return tmp, nil
+		} else { // no tail
+			return f.rvalue(p, t)
+		}
 	case composite:
 		h, _ := cmp.h().(composite)
 		if tail, err := cmp.t(); err == nil {
