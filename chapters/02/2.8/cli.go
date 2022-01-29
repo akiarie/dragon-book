@@ -11,10 +11,10 @@ func main() {
     int i; int j; float[100] a; float v; float x;
     while ( true ) {
         do i = i+1; while ( a[i] < v );
-        do j = j-1; while ( a[j] > v ); 
+        do j = j-1; while ( a[j] > v );
         if ( i >= j ) break;
         x = a[i]; a[i] = a[j]; a[j] = x;
-    } 
+    }
 }
 `
 	tokens, lines, err := tokenize(raw)
@@ -22,6 +22,10 @@ func main() {
 		log.Fatalln(err)
 	}
 	p := &parser{input: tokens, lines: lines, raw: raw}
-	p.block()
+	bl := p.block()
+	T := &table{[]string{}, []string{}}
+	if err := bl.gen(p, T); err != nil {
+		log.Fatalln(err)
+	}
 	fmt.Println(p.output)
 }

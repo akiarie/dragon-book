@@ -42,10 +42,13 @@ stmts   → stmts stmt
 
 stmt    → expr ;
         | decl ;
+        | command ;
         | if ( expr ) stmt
         | while ( expr ) stmt
         | do stmt while ( expr );
         | block
+
+command → 'break'
 
 decl    → type id
         | type '[' num ']' id
@@ -54,9 +57,6 @@ type    → int | float
 
 expr    → rel = expr
         | rel
-        | boolean
-
-boolean → true | false
 
 rel     → arithm
         | rel boolop arithm
@@ -74,8 +74,11 @@ term    → term * factor
 
 factor  → ( expr )
         | num
+        | boolean
         | id
+        | id '[' arithm ']'
 
+boolean → true | false
 id      → [a-zA-Z_][a-zA-Z0-9_]+
 num     → [0-9]+
 ```
@@ -95,4 +98,5 @@ with appropriate concretisations `stmt` and `expr`
 type stmt node
 
 type expr node
+
 ```

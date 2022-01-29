@@ -15,8 +15,8 @@ const (
 	tkKeyword                = "keyword"
 	tkType                   = "type"
 	tkId                     = "id" // distinct from type & keyword b/c cannot be parsed as type
-	tkBool                   = "bool"
 	tkNum                    = "num"
+	tkBool                   = "bool"
 	tkOp                     = "op"
 	tkRel                    = "rel"
 	tkAssign                 = "assign"
@@ -39,6 +39,7 @@ type lexer struct {
 }
 
 func parsetoken(l *lexer) (*token, error) {
+	// space
 	st := l.pos
 	for i, c := range l.input[l.pos:] {
 		if !unicode.IsSpace(c) {
@@ -112,9 +113,9 @@ func parsetoken(l *lexer) (*token, error) {
 	}
 
 	// bool
-	for _, t := range []string{"true", "false"} {
+	for _, t := range []string{"false", "true"} {
 		if strings.Index(l.input[l.pos:], t) == 0 {
-			tk := &token{class: tkBool, value: t, pos: l.pos}
+			tk := &token{class: tkNum, value: t, pos: l.pos}
 			l.pos += len(t)
 			return tk, nil
 		}
@@ -128,6 +129,7 @@ func parsetoken(l *lexer) (*token, error) {
 		return tk, nil
 	}
 
+	// num
 	re = regexp.MustCompile(`[0-9]+`)
 	if match := re.FindString(l.input[l.pos:]); match != "" {
 		tk := &token{class: tkNum, value: match, pos: l.pos}
