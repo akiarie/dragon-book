@@ -10,6 +10,7 @@ func main() {
 {
     int i; int j; float[100] a; float v; float x;
     while ( true ) {
+		j = j + 1;
         do i = i+1; while ( a[i] < v );
         do j = j-1; while ( a[j] > v );
         if ( i >= j ) break;
