@@ -4,7 +4,7 @@
  * Grammar:
  * 		stmt 	→ if expr then stmt	
  * 				| if expr then stmt else stmt
- *  			| ε
+ * 				| ε
  * 		expr 	→ term relop term
  *  			| term
  * 		term 	→ id
@@ -17,7 +17,7 @@
  * 		id 		→ letter ( letter | digit )*
  *  	if 		→ if
  * 		then 	→ then
- *  	else 	→ else
+ * 		else 	→ else
  * 		relop 	→ < | > | <= | >= | = | <>
  */
 
