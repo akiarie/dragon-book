@@ -2,23 +2,23 @@
  * lex input string and output tokens for simplicity:
  *
  * Grammar:
- * 		stmt 	→ if expr then stmt	
- * 				| if expr then stmt else stmt
- * 				| ε
- * 		expr 	→ term relop term
- *  			| term
- * 		term 	→ id
- * 				| number
- *
- * 		digit 	→ [0-9]
- * 		digits 	→ digit+
- * 		number 	→ digits ( . digits )? ( E [+-]? digits )?
- * 		letter 	→ [A-Za-z]
- * 		id 		→ letter ( letter | digit )*
- *  	if 		→ if
- * 		then 	→ then
- * 		else 	→ else
- * 		relop 	→ < | > | <= | >= | = | <>
+ *        stmt   → if expr then stmt	
+ *               | if expr then stmt else stmt
+ *               | ε
+ *        expr   → term relop term
+ *               | term
+ *        term   → id
+ *               | number
+ *        
+ *        digit  → [0-9]
+ *        digits → digit+
+ *        number → digits ( . digits )? ( E [+-]? digits )?
+ *        letter → [A-Za-z]
+ *        id     → letter ( letter | digit )*
+ *        if     → if
+ *        then   → then
+ *        else   → else
+ *        relop  → < | > | <= | >= | = | <>
  */
 
 #include <stdio.h>
