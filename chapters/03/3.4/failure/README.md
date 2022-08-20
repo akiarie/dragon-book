@@ -13,7 +13,7 @@ int nextf(int s, int t)
 }
 
 f(1) = 0;
-for (int s = 0; s != n; s++) {
+for (int s = 1; s != n; s++) {
 	f(s+1) = nextf(s, f(s));
 }
 ```
