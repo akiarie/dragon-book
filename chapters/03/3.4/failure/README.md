@@ -23,7 +23,7 @@ The string matching algorithm, accordingly, becomes the following:
 ```C
 int nexts(int s, int i) {
 	if (a[i] == b[s+1]) {
-		return s + 1;
+		return s+1;
 	}
 	if (s == 0) {
 		return 0;
