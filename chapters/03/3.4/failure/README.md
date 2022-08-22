@@ -32,7 +32,7 @@ int nexts(int s, int i) {
 }
 
 int s = 0;
-for (int i = 0; i <= m; i++) {
+for (int i = 1; i <= m; i++) {
 	s = nexts(s, i);
 	if (s == n) {
 		return "yes";
