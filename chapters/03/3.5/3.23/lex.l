@@ -3,7 +3,6 @@
 	LE, LE, EQ, NE, GT, GE,
 	IF, THEN, ELSE, ID, NUMBER, RELOP
 %}
-
 /* regular definitions */
 delim	[ \t\n]
 ws		{delim}+
