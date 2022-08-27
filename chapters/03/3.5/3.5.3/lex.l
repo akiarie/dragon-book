@@ -8,14 +8,12 @@ void printyy();
 
 %option noyywrap
 
-delim	[ \t\n]
-ws		{delim}+
-other   [^ \t\n]+
+float 	float
 
 %%
 
-{ws}	{printf(" ");}
-{other}	{printyy();}
+{float}		{printf("double");}
+(^{float})*	{printyy();}
 
 %%
 
