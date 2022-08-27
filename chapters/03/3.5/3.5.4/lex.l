@@ -20,9 +20,9 @@ cword	{cons}{letter}*
 
 %%
 
-{ws}		{printyy();}
-{vword} 	{printvowel();}
-{cword} 	{printcons();}
+{ws}	{printyy();}
+{vword}	{printvowel();}
+{cword}	{printcons();}
 
 %%
 
