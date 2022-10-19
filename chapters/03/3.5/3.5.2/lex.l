@@ -9,18 +9,19 @@ void printyy();
 %option noyywrap
 
 delim	[ \t\n]
-ws		{delim}+
+ws	{delim}+
 other   [^ \t\n]+
 
 %%
 
-{ws}	{printf(" ");}
+{ws}	{printf("[delim]");}
 {other}	{printyy();}
 
 %%
 
 void printyy()
 {
+	/* prints the lexeme */
 	printf("%.*s", (int)yyleng, yytext);
 }
 
